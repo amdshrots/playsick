@@ -13,41 +13,64 @@ jobs:
 
     - name: Download and Prepare Playit for macOS
       run: |
-        # Download the macOS amd64 binary (standard for macos-latest runners)
-        curl -L "https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-darwin-amd64" -o "$HOME/playit"
-        
-        # Make it executable
-        chmod +x "$HOME/playit"
-        
-        echo "Playit downloaded to $HOME/playit"
-        sleep 5
+        PLAYIT_URL="https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-darwin-amd64"
+        PLAYIT_DEST="$HOME/playit"
 
-    # ---------------------------------------------------------------------
-    # !!! VNC/SSH Setup Steps Removed !!!
-    # Enabling and configuring VNC/Screen Sharing or SSH reliably on a 
-    # headless GitHub Actions macos-latest runner is extremely difficult
-    # and often doesn't work as expected. The original Windows RDP 
-    # setup steps have no direct, reliable macOS equivalent here.
-    # ---------------------------------------------------------------------
+        echo "Attempting to download Playit from: $PLAYIT_URL"
+        
+        # Download the macOS amd64 binary 
+        # -f: Fail silently (no output) on server errors (4xx, 5xx) but return error code 22
+        # -L: Follow redirects
+        # -s: Silent mode (don't show progress meter or error messages)
+        # Combine -fsL for silent failure on error, following redirects.
+        if ! curl -fsL "$PLAYIT_URL" -o "$PLAYIT_DEST"; then
+          echo "::error::Failed to download Playit executable. Check URL or network."
+          # Optionally, display what WAS downloaded if it exists
+          if [[ -f "$PLAYIT_DEST" ]]; then
+             echo "Content of downloaded file (first 5 lines):"
+             head -n 5 "$PLAYIT_DEST"
+          fi
+          exit 1 # Explicitly fail the step
+        fi
+
+        echo "Download apparently successful. Checking file type..."
+        file "$PLAYIT_DEST" # Verify the file type
+
+        # Check if the output of file command contains 'executable' - adapt if needed for specific macOS output
+        if ! file "$PLAYIT_DEST" | grep -q "executable"; then
+          echo "::error::Downloaded file is not an executable!"
+          echo "Content of downloaded file (first 5 lines):"
+          head -n 5 "$PLAYIT_DEST"
+          exit 1
+        fi
+        
+        echo "File type appears correct. Making executable..."
+        # Make it executable
+        chmod +x "$PLAYIT_DEST"
+        
+        echo "Playit prepared at $PLAYIT_DEST"
+        sleep 2 # Short sleep okay here
 
     - name: Start Playit Tunnel Agent
       env:
         PLAYIT_AUTH_KEY: ${{ secrets.PL }} 
       run: |
         echo "Starting Playit Agent in the background..."
-        # Run playit in the background using nohup to prevent SIGHUP 
-        # and redirect output to a log file. '&' backgrounds the process.
         nohup $HOME/playit --secret $env:PLAYIT_AUTH_KEY > $HOME/playit.log 2>&1 &
+        sleep 10 # Give it time to potentially connect or fail 
         
-        # Give it a moment to start up
-        sleep 10 
-
-        # Check if the process is running (optional check)
-        pgrep -fl playit || (echo "Playit process not found!" && cat $HOME/playit.log && exit 1)
-        echo "Playit agent should be running. Check $HOME/playit.log for details."
+        echo "Checking Playit process status..."
+        if pgrep -fl playit; then
+          echo "Playit process found running."
+          echo "Check Playit dashboard or logs ($HOME/playit.log) for connection status."
+        else
+          echo "::error::Playit process not found after starting!"
+          echo "Displaying log content ($HOME/playit.log):"
+          cat "$HOME/playit.log"
+          exit 1 # Fail the job if Playit didn't stay running
+        fi
 
     - name: Keep the GitHub Action Runner Alive
       run: |
         echo "Workflow running, keeping alive..."
-        # Use Unix 'sleep' command
-        sleep 11800 
+        sleep 11800
