@@ -1,76 +1,35 @@
-name: Playit Tunnel on macOS
-
+name: Playit RDP Tunnel
 on:
   workflow_dispatch:
 
 jobs:
-  setup-macos-tunnel:
-    runs-on: macos-latest # Use a macOS runner
+  setup-rdp-tunnel:
+    runs-on: windows-latest
 
     steps:
-    - name: Check out the repository
-      uses: actions/checkout@v2
+      - name: Check out the repository
+        uses: actions/checkout@v2
 
-    - name: Download and Prepare Playit for macOS
-      run: |
-        PLAYIT_URL="https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-darwin-amd64"
-        PLAYIT_DEST="$HOME/playit"
+      - name: Download and Install Playit
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-windows-x86_64-signed.exe" -OutFile "$env:USERPROFILE\playit.exe"
+          Start-Sleep -Seconds 5
 
-        echo "Attempting to download Playit from: $PLAYIT_URL"
-        
-        # Download the macOS amd64 binary 
-        # -f: Fail silently (no output) on server errors (4xx, 5xx) but return error code 22
-        # -L: Follow redirects
-        # -s: Silent mode (don't show progress meter or error messages)
-        # Combine -fsL for silent failure on error, following redirects.
-        if ! curl -fsL "$PLAYIT_URL" -o "$PLAYIT_DEST"; then
-          echo "::error::Failed to download Playit executable. Check URL or network."
-          # Optionally, display what WAS downloaded if it exists
-          if [[ -f "$PLAYIT_DEST" ]]; then
-             echo "Content of downloaded file (first 5 lines):"
-             head -n 5 "$PLAYIT_DEST"
-          fi
-          exit 1 # Explicitly fail the step
-        fi
+      - name: Enable TS
+        run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
 
-        echo "Download apparently successful. Checking file type..."
-        file "$PLAYIT_DEST" # Verify the file type
+      - name: Configure Firewall and Authentication
+        run: |
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
+          Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "p@ssw0rd!" -Force)
 
-        # Check if the output of file command contains 'executable' - adapt if needed for specific macOS output
-        if ! file "$PLAYIT_DEST" | grep -q "executable"; then
-          echo "::error::Downloaded file is not an executable!"
-          echo "Content of downloaded file (first 5 lines):"
-          head -n 5 "$PLAYIT_DEST"
-          exit 1
-        fi
-        
-        echo "File type appears correct. Making executable..."
-        # Make it executable
-        chmod +x "$PLAYIT_DEST"
-        
-        echo "Playit prepared at $PLAYIT_DEST"
-        sleep 2 # Short sleep okay here
+      - name: Start Playit and Set Up RDP Tunnel
+        env:
+          PLAYIT_AUTH_KEY: ${{ secrets.PL }}
+        run: |
+          Start-Process -FilePath "$env:USERPROFILE\playit.exe" -ArgumentList "--secret $env:PLAYIT_AUTH_KEY" -NoNewWindow -Wait
+          Start-Process -FilePath "$env:USERPROFILE\playit.exe" -NoNewWindow
 
-    - name: Start Playit Tunnel Agent
-      env:
-        PLAYIT_AUTH_KEY: ${{ secrets.PL }} 
-      run: |
-        echo "Starting Playit Agent in the background..."
-        nohup $HOME/playit --secret $env:PLAYIT_AUTH_KEY > $HOME/playit.log 2>&1 &
-        sleep 10 # Give it time to potentially connect or fail 
-        
-        echo "Checking Playit process status..."
-        if pgrep -fl playit; then
-          echo "Playit process found running."
-          echo "Check Playit dashboard or logs ($HOME/playit.log) for connection status."
-        else
-          echo "::error::Playit process not found after starting!"
-          echo "Displaying log content ($HOME/playit.log):"
-          cat "$HOME/playit.log"
-          exit 1 # Fail the job if Playit didn't stay running
-        fi
-
-    - name: Keep the GitHub Action Runner Alive
-      run: |
-        echo "Workflow running, keeping alive..."
-        sleep 11800
+      - name: Keep the GitHub Action Runner Alive
+        run: Start-Sleep -Seconds 11800
