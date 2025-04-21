@@ -4,8 +4,7 @@ on:
 
 jobs:
   setup-rdp-tunnel:
-    # ⬇️ now runs on your self-hosted GPU runner
-    runs-on: [self-hosted, windows, x64, gpu]
+    runs-on: [windows-latest, gpu]
 
     steps:
       - name: Check out the repository
