@@ -1,35 +1,53 @@
-name: Playit RDP Tunnel
+name: Playit Tunnel on macOS
+
 on:
   workflow_dispatch:
 
 jobs:
-  setup-rdp-tunnel:
-    runs-on: windows-latest
+  setup-macos-tunnel:
+    runs-on: macos-latest # Use a macOS runner
 
     steps:
-      - name: Check out the repository
-        uses: actions/checkout@v2
+    - name: Check out the repository
+      uses: actions/checkout@v2
 
-      - name: Download and Install Playit
-        run: |
-          Invoke-WebRequest -Uri "https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-windows-x86_64-signed.exe" -OutFile "$env:USERPROFILE\playit.exe"
-          Start-Sleep -Seconds 5
+    - name: Download and Prepare Playit for macOS
+      run: |
+        # Download the macOS amd64 binary (standard for macos-latest runners)
+        curl -L "https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-darwin-amd64" -o "$HOME/playit"
+        
+        # Make it executable
+        chmod +x "$HOME/playit"
+        
+        echo "Playit downloaded to $HOME/playit"
+        sleep 5
 
-      - name: Enable TS
-        run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+    # ---------------------------------------------------------------------
+    # !!! VNC/SSH Setup Steps Removed !!!
+    # Enabling and configuring VNC/Screen Sharing or SSH reliably on a 
+    # headless GitHub Actions macos-latest runner is extremely difficult
+    # and often doesn't work as expected. The original Windows RDP 
+    # setup steps have no direct, reliable macOS equivalent here.
+    # ---------------------------------------------------------------------
 
-      - name: Configure Firewall and Authentication
-        run: |
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
-          Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "p@ssw0rd!" -Force)
+    - name: Start Playit Tunnel Agent
+      env:
+        PLAYIT_AUTH_KEY: ${{ secrets.PL }} 
+      run: |
+        echo "Starting Playit Agent in the background..."
+        # Run playit in the background using nohup to prevent SIGHUP 
+        # and redirect output to a log file. '&' backgrounds the process.
+        nohup $HOME/playit --secret $env:PLAYIT_AUTH_KEY > $HOME/playit.log 2>&1 &
+        
+        # Give it a moment to start up
+        sleep 10 
 
-      - name: Start Playit and Set Up RDP Tunnel
-        env:
-          PLAYIT_AUTH_KEY: ${{ secrets.PL }}
-        run: |
-          Start-Process -FilePath "$env:USERPROFILE\playit.exe" -ArgumentList "--secret $env:PLAYIT_AUTH_KEY" -NoNewWindow -Wait
-          Start-Process -FilePath "$env:USERPROFILE\playit.exe" -NoNewWindow
+        # Check if the process is running (optional check)
+        pgrep -fl playit || (echo "Playit process not found!" && cat $HOME/playit.log && exit 1)
+        echo "Playit agent should be running. Check $HOME/playit.log for details."
 
-      - name: Keep the GitHub Action Runner Alive
-        run: Start-Sleep -Seconds 11800
+    - name: Keep the GitHub Action Runner Alive
+      run: |
+        echo "Workflow running, keeping alive..."
+        # Use Unix 'sleep' command
+        sleep 11800 
