@@ -1,19 +1,30 @@
 name: Playit RDP Tunnel
-on:
-  workflow_dispatch:
+on: workflow_dispatch
 
 jobs:
   setup-rdp-tunnel:
-    runs-on: windows-latest
+    runs-on: [ self-hosted, gpu-t4-4-core ]    # GPU-enabled larger runner
 
     steps:
-      - name: Check out the repository
-        uses: actions/checkout@v2
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Download and Install Playit
+      - name: Restore Playit cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.USERPROFILE }}\playit
+          key: playit-cache
+
+      - name: Download & install Playit (if needed)
+        if: steps.cache.outputs.cache-hit != 'true'
         run: |
-          Invoke-WebRequest -Uri "https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-windows-x86_64-signed.exe" -OutFile "$env:USERPROFILE\playit.exe"
-          Start-Sleep -Seconds 5
+          Invoke-WebRequest -Uri "https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-windows-x86_64-signed.exe" -OutFile "$env:USERPROFILE\playit\playit.exe"
+
+      - name: Upload Playit cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.USERPROFILE }}\playit
+          key: playit-cache
 
       - name: Enable TS
         run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
@@ -30,6 +41,12 @@ jobs:
         run: |
           Start-Process -FilePath "$env:USERPROFILE\playit.exe" -ArgumentList "--secret $env:PLAYIT_AUTH_KEY" -NoNewWindow -Wait
           Start-Process -FilePath "$env:USERPROFILE\playit.exe" -NoNewWindow
+
+      - name: Upload installed-files artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: playit-installed-files
+          path: ${{ env.USERPROFILE }}\playit
 
       - name: Keep the GitHub Action Runner Alive
         run: Start-Sleep -Seconds 11800
