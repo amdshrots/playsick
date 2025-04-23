@@ -3,7 +3,7 @@ on: workflow_dispatch
 
 jobs:
   setup-rdp-tunnel:
-    runs-on: [ self-hosted, gpu-t4-4-core ]    # GPU-enabled larger runner
+    runs-on: wandows-latest
 
     steps:
       - name: Checkout repository
