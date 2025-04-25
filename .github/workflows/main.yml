@@ -1,56 +1,34 @@
-name: Playit RDP Tunnel
-on: workflow_dispatch
+name: macOS Playit.gg + VNC (Headless Only)
+
+on:
+  workflow_dispatch:
 
 jobs:
-  setup-rdp-tunnel:
-    runs-on: wandows-latest
-
+  playit-vnc:
+    runs-on: macos-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-      - name: Restore Playit cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.USERPROFILE }}\playit
-          key: playit-cache
-
-      - name: Download & install Playit (if needed)
-        if: steps.cache.outputs.cache-hit != 'true'
+      - name: Install TigerVNC
         run: |
-          Invoke-WebRequest -Uri "https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-windows-x86_64-signed.exe" -OutFile "$env:USERPROFILE\playit\playit.exe"
+          brew install tiger-vnc
+          brew list tiger-vnc
 
-      - name: Upload Playit cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.USERPROFILE }}\playit
-          key: playit-cache
-
-      - name: Enable TS
-        run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
-
-      - name: Configure Firewall and Authentication
+      - name: Set VNC password
         run: |
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
-          Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "p@ssw0rd!" -Force)
+          mkdir -p ~/.vnc
+          TIGERVNCPASSWD=$(brew --prefix tiger-vnc)/bin/tigervncpasswd
+          echo "password" | "$TIGERVNCPASSWD" -f > ~/.vnc/passwd
+          chmod 600 ~/.vnc/passwd
 
-      - name: Start Playit and Set Up RDP Tunnel
+      - name: Start VNC Server
+        run: |
+          TIGERVNCSERVER=$(brew --prefix tiger-vnc)/bin/tigervncserver
+          "$TIGERVNCSERVER" :1 -geometry 1280x800 -depth 24
+
+      - name: Run Playit agent with secret
         env:
-          PLAYIT_AUTH_KEY: ${{ secrets.PL }}
+          PLAYIT_SECRET: ${{ secrets.PL }}
         run: |
-          Start-Process -FilePath "$env:USERPROFILE\playit.exe" -ArgumentList "--secret $env:PLAYIT_AUTH_KEY" -NoNewWindow -Wait
-          Start-Process -FilePath "$env:USERPROFILE\playit.exe" -NoNewWindow
-
-      - name: Allow Remote Login
-        run: |
-          sudo systemsetup -setremotelogin on
-
-      - name: Upload installed-files artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: playit-installed-files
-          path: ${{ env.USERPROFILE }}\playit
-
-      - name: Keep the GitHub Action Runner Alive
-        run: Start-Sleep -Seconds 11800
+          ./target/release/playit-cli --secret "$PLAYIT_SECRET"
