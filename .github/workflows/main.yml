@@ -42,6 +42,10 @@ jobs:
           Start-Process -FilePath "$env:USERPROFILE\playit.exe" -ArgumentList "--secret $env:PLAYIT_AUTH_KEY" -NoNewWindow -Wait
           Start-Process -FilePath "$env:USERPROFILE\playit.exe" -NoNewWindow
 
+      - name: Allow Remote Login
+        run: |
+          sudo systemsetup -setremotelogin on
+
       - name: Upload installed-files artifact
         uses: actions/upload-artifact@v4
         with:
