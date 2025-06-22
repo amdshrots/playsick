@@ -1,51 +1,63 @@
 # .github/workflows/main.yml
 
-name: macOS Remote Desktop (The Final Gambit)
+name: macOS Remote Desktop (The Infiltrator)
 
 on:
   workflow_dispatch:
 
 jobs:
   rdp:
-    runs-on: macos-12 # THE CRITICAL CHANGE: Target the Intel-based OS
+    runs-on: macos-latest # We conquer the latest, as requested.
     timeout-minutes: 350
 
     steps:
-      - name: '1. Create User, Grant VNC, and Wake Display'
+      - name: '1. Infiltrate and Deploy Private TigerVNC'
+        run: |
+          echo "Downloading official TigerVNC package..."
+          curl -L -o tigervnc.dmg https://github.com/TigerVNC/tigervnc/releases/download/v1.13.1/TigerVNC-1.13.1.dmg
+
+          echo "Mounting disk image..."
+          hdiutil attach tigervnc.dmg
+          
+          # Find the mount path, which is usually /Volumes/TigerVNC-<version>
+          MOUNT_PATH=$(ls /Volumes/ | grep TigerVNC)
+          
+          echo "Extracting VNC server binaries from $MOUNT_PATH..."
+          # Create a local directory for our private VNC server
+          mkdir ~/vnc
+          cp "/Volumes/$MOUNT_PATH/TigerVNC Viewer.app/Contents/MacOS/tigervncserver" ~/vnc/
+          cp "/Volumes/$MOUNT_PATH/TigerVNC Viewer.app/Contents/MacOS/tigervncpasswd" ~/vnc/
+          
+          echo "Unmounting disk image..."
+          hdiutil detach "/Volumes/$MOUNT_PATH"
+          
+          echo "Private VNC deployment complete."
+
+      - name: '2. Configure and Launch Private VNC Server'
         run: |
           echo "::add-mask::${{ secrets.RDP_USER_PASSWORD }}"
+          echo "Configuring VNC password..."
+          mkdir -p ~/.vnc
+          # Use our private copy of the command
+          echo "${{ secrets.RDP_USER_PASSWORD }}" | ~/vnc/tigervncpasswd -f > ~/.vnc/passwd
+          chmod 600 ~/.vnc/passwd
 
-          # Create the user 'rdpuser'. This is a reliable method.
-          echo "Creating user 'rdpuser'..."
-          sudo dscl . -create /Users/rdpuser
-          sudo dscl . -create /Users/rdpuser UserShell /bin/bash
-          sudo dscl . -create /Users/rdpuser RealName "RDP User"
-          sudo dscl . -create /Users/rdpuser UniqueID "1001"
-          sudo dscl . -passwd /Users/rdpuser "${{ secrets.RDP_USER_PASSWORD }}"
-          sudo dscl . -append /Groups/admin GroupMembership rdpuser
-
-          # Grant VNC privileges directly to the new user.
-          echo "Granting VNC privileges to 'rdpuser'..."
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -users rdpuser -privs -all -restart -agent -menu
-
-          # Force the login window to restart to initialize the display. This is likely to work on macos-12.
-          echo "Forcing display to wake up by restarting the login window..."
-          sudo pkill loginwindow
-
-          echo "System is configured and ready."
-
-      - name: '2. Create Tunnel and Provide Instructions'
+          echo "Starting private TigerVNC server..."
+          # Start our private server
+          ~/vnc/tigervncserver :1 -localhost no -SecurityTypes VncAuth -PasswordFile ~/.vnc/passwd -fg &
+          
+      - name: '3. Create Tunnel and Provide Instructions'
         run: |
           echo "Downloading and running bore tunnel..."
           curl -LSs https://github.com/ekzhang/bore/releases/download/v0.5.0/bore-v0.5.0-x86_64-apple-darwin.tar.gz | tar -xz
           chmod +x bore
 
-          echo "Starting bore tunnel for VNC (port 5900)..."
-          nohup ./bore local 5900 --to bore.pub > tunnel.log 2>&1 &
+          echo "Starting bore tunnel for VNC (port 5901)..."
+          nohup ./bore local 5901 --to bore.pub > tunnel.log 2>&1 &
           sleep 5
 
           echo "--------------------------------------------------------------------"
-          echo "SESSION IS NOW ACTIVE. THE FINAL PATH IS OPEN."
+          echo "SESSION IS NOW ACTIVE. THE FORTRESS IS BREACHED."
           cat tunnel.log
           echo "--------------------------------------------------------------------"
           
