@@ -1,70 +1,65 @@
 # .github/workflows/macos-rdp.yml
 
-name: macOS Remote Desktop (bore)
+name: macOS Remote Desktop (TigerVNC)
 
 on:
-  workflow_dispatch: # Allows you to trigger this workflow manually
+  workflow_dispatch:
 
 jobs:
   rdp:
     runs-on: macos-12
-    timeout-minutes: 350 # Max runtime is 6 hours (360 minutes).
+    timeout-minutes: 350
 
     steps:
-      - name: 'Checkout: Necessary for some setups'
-        uses: actions/checkout@v4
-
-      - name: '1. Create User Account'
+      - name: '1. Install and Configure TigerVNC'
         run: |
-          echo "Setting up user and password..."
-          echo "::add-mask::${{ secrets.RDP_USER_PASSWORD }}"
-          sudo dscl . -create /Users/rdpuser
-          sudo dscl . -create /Users/rdpuser UserShell /bin/bash
-          sudo dscl . -create /Users/rdpuser RealName "RDP User"
-          sudo dscl . -create /Users/rdpuser UniqueID "1001"
-          sudo dscl . -create /Users/rdpuser PrimaryGroupID 80
-          sudo dscl . -create /Users/rdpuser NFSHomeDirectory /Users/rdpuser
-          sudo dscl . -passwd /Users/rdpuser "${{ secrets.RDP_USER_PASSWORD }}"
-          sudo dscl . -append /Groups/admin GroupMembership rdpuser
-          echo "User 'rdpuser' created successfully."
+          echo "Installing TigerVNC..."
+          brew install tiger-vnc
 
-      - name: '2. Enable Screen Sharing (VNC Server)'
-        run: |
-          echo "Enabling macOS Screen Sharing (VNC)..."
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -users rdpuser -privs -all -restart -agent -menu
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -clientopts -setvnclegacy -vnclegacy yes -setvncpw "${{ secrets.RDP_USER_PASSWORD }}" -restart -agent
-          echo "VNC Server enabled and configured."
+          echo "Configuring VNC password..."
+          # Hide password from logs
+          echo "::add-mask::${{ secrets.VNC_PASSWORD }}"
+          
+          # Create the .vnc directory and set the password
+          mkdir -p ~/.vnc
+          TIGERVNCPASSWD_PATH=$(brew --prefix tiger-vnc)/bin/tigervncpasswd
+          echo "${{ secrets.VNC_PASSWORD }}" | $TIGERVNCPASSWD_PATH -f > ~/.vnc/passwd
+          chmod 600 ~/.vnc/passwd
+          echo "TigerVNC password configured."
 
-      - name: '3. Install and Run bore Tunnel'
-        id: bore # Assign an ID to this step to access its output later
+      - name: '2. Start TigerVNC Server'
         run: |
-          echo "Downloading and setting up bore..."
-          # Dynamically get the latest release URL for macOS
-          LATEST_BORE_URL=$(curl -s "https://api.github.com/repos/ekzhang/bore/releases/latest" | grep "browser_download_url.*bore-v.*-x86_64-apple-darwin.tar.gz" | head -n 1 | cut -d '"' -f 4)
-          curl -L -o bore.tar.gz $LATEST_BORE_URL
-          tar -xvf bore.tar.gz
+          echo "Starting TigerVNC server..."
+          # Start the server on display :1, which corresponds to port 5901.
+          # -localhost no : Allows connections from outside the runner.
+          # -SecurityTypes VncAuth : Use the standard VNC password authentication.
+          # -PasswordFile : Specifies our created password file.
+          # -fg : Runs the server in the foreground, keeping the job alive without needing a separate 'sleep' command.
+          tigervncserver :1 -localhost no -SecurityTypes VncAuth -PasswordFile ~/.vnc/passwd &
+          sleep 5 # Give the server a moment to initialize before tunneling.
+
+      - name: '3. Create Tunnel with bore'
+        run: |
+          echo "Downloading and running bore..."
+          curl -LSs https://github.com/ekzhang/bore/releases/download/v0.5.0/bore-v0.5.0-x86_64-apple-darwin.tar.gz | tar -xz
           chmod +x bore
 
-          echo "Starting bore tunnel for VNC (port 5900)..."
-          # Run bore in the background, redirecting its output to a log file
-          # This allows the workflow to continue while the tunnel stays open
-          nohup ./bore local 5900 --to bore.pub > tunnel.log 2>&1 &
-
-          # Wait for the tunnel to establish and write the log
-          sleep 5
-
-          echo "Bore tunnel is active. Details below:"
+          echo "Starting bore tunnel for VNC (port 5901)..."
+          # Tunnel to port 5901, where TigerVNC is running.
+          # We run this in the background so the final step can provide instructions.
+          nohup ./bore local 5901 --to bore.pub > tunnel.log 2>&1 &
+          sleep 5 # Wait for the tunnel address to be generated.
+          
+          echo "--------------------------------------------------------------------"
+          echo "SESSION IS NOW ACTIVE."
           cat tunnel.log
+          echo "--------------------------------------------------------------------"
+          echo "Use the 'bore.pub:PORT' address from the log above."
+          echo "Your VNC password is the one you set in the VNC_PASSWORD secret."
+          echo "Username is not required for connection."
+          echo "This session will remain active for approximately 6 hours."
 
       - name: '4. Keep Workflow Alive'
         run: |
-          echo "--------------------------------------------------------------------"
-          echo "SESSION IS NOW ACTIVE."
-          echo "Check the 'Install and Run bore Tunnel' step logs for your connection address."
-          echo "It will be in the format: bore.pub:PORT_NUMBER"
-          echo "Connect using any VNC Client."
-          echo "This session will remain active for approximately 6 hours."
-          echo "--------------------------------------------------------------------"
-          
-          # Keep the runner alive
+          # The primary purpose of this step is to wait. The VNC and tunnel processes run in the background.
           sleep 21000
