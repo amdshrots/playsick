@@ -1,6 +1,6 @@
 # .github/workflows/main.yml
 
-name: macOS Remote Desktop (Final Assembly)
+name: macOS Remote Desktop (Final Key)
 
 on:
   workflow_dispatch:
@@ -11,30 +11,21 @@ jobs:
     timeout-minutes: 350
 
     steps:
-      - name: '1. Create User, Grant VNC, and Wake Display'
+      - name: '1. Enable VNC Service with a Master Password'
         run: |
           echo "::add-mask::${{ secrets.RDP_USER_PASSWORD }}"
+          
+          echo "Enabling VNC Service for all local users..."
+          # This is the cooperative command: It activates the ARD Agent and grants full control privileges to all existing local users.
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -allowAccessFor -allUsers -privs -all
 
-          # Create the user 'rdpuser'
-          echo "Creating user 'rdpuser'..."
-          sudo dscl . -create /Users/rdpuser
-          sudo dscl . -create /Users/rdpuser UserShell /bin/bash
-          sudo dscl . -create /Users/rdpuser RealName "RDP User"
-          sudo dscl . -create /Users/rdpuser UniqueID "1001"
-          sudo dscl . -passwd /Users/rdpuser "${{ secrets.RDP_USER_PASSWORD }}"
-          sudo dscl . -append /Groups/admin GroupMembership rdpuser
+          echo "Setting a Master VNC password for the service..."
+          # This command sets a password for the VNC service itself, which overrides individual user passwords for VNC connections.
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -clientopts -setvncpw -vncpw "${{ secrets.RDP_USER_PASSWORD }}" -setvnclegacy -vnclegacy yes
 
-          # Grant VNC privileges directly to the new user
-          echo "Granting VNC privileges to 'rdpuser'..."
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -users rdpuser -privs -all -restart -agent -menu
+          echo "VNC service is active and configured."
 
-          # THE FINAL KEY: Force the login window to restart, which initializes the display.
-          echo "Forcing display to wake up by restarting the login window..."
-          sudo pkill loginwindow || true
-
-          echo "System is configured and ready."
-
-      - name: '2. Create Tunnel and Provide Instructions'
+      - name: '2. Create Tunnel and Provide Final Instructions'
         run: |
           echo "Downloading and running bore tunnel..."
           curl -LSs https://github.com/ekzhang/bore/releases/download/v0.5.0/bore-v0.5.0-x86_64-apple-darwin.tar.gz | tar -xz
@@ -45,7 +36,7 @@ jobs:
           sleep 5
 
           echo "--------------------------------------------------------------------"
-          echo "SESSION IS NOW ACTIVE. READ FINAL LOGIN INSTRUCTIONS."
+          echo "SESSION IS NOW ACTIVE. FOLLOW THE FINAL LOGIN PROCEDURE."
           cat tunnel.log
           echo "--------------------------------------------------------------------"
           
