@@ -7,17 +7,26 @@ on:
 
 jobs:
   rdp:
-    runs-on: macos-latest # This is robust enough for latest now
+    runs-on: macos-latest
     timeout-minutes: 350
 
     steps:
-      - name: '1. Install TigerVNC and Configure Password'
+      - name: '1. Install TigerVNC'
         run: |
           echo "Installing TigerVNC..."
           brew install tiger-vnc
 
+      - name: '2. Add Homebrew to PATH'
+        run: |
+          echo "Adding Homebrew bin to GitHub Actions PATH..."
+          # This command tells all subsequent steps in the job to look for executables in /opt/homebrew/bin
+          echo "/opt/homebrew/bin" >> $GITHUB_PATH
+          echo "PATH updated successfully."
+
+      - name: '3. Configure VNC Password'
+        run: |
           echo "Configuring VNC password..."
-          # CRITICAL CHECK: Ensure the secret is not empty
+          # Ensure the secret is not empty
           if [ -z "${{ secrets.VNC_PASSWORD }}" ]; then
             echo "Error: VNC_PASSWORD secret is not set. Please add it to your repository settings."
             exit 1
@@ -25,32 +34,27 @@ jobs:
           
           echo "::add-mask::${{ secrets.VNC_PASSWORD }}"
           
-          # Create the .vnc directory
           mkdir -p ~/.vnc
-          
-          # SIMPLIFIED & ROBUST: Call the command directly. The system PATH will find it.
+          # Now that the PATH is correct, this will work.
           echo "${{ secrets.VNC_PASSWORD }}" | tigervncpasswd -f > ~/.vnc/passwd
-          
           chmod 600 ~/.vnc/passwd
           echo "TigerVNC password configured successfully."
 
-      - name: '2. Start TigerVNC Server'
+      - name: '4. Start TigerVNC Server'
         run: |
           echo "Starting TigerVNC server on port 5901..."
-          # Start the server on display :1 (port 5901)
           tigervncserver :1 -localhost no -SecurityTypes VncAuth -PasswordFile ~/.vnc/passwd &
           sleep 5
 
-      - name: '3. Create Tunnel with bore'
+      - name: '5. Create Tunnel with bore'
         run: |
           echo "Downloading and running bore..."
           curl -LSs https://github.com/ekzhang/bore/releases/download/v0.5.0/bore-v0.5.0-x86_64-apple-darwin.tar.gz | tar -xz
           chmod +x bore
 
           echo "Starting bore tunnel for VNC (port 5901)..."
-          # Run in the background and log the output for retrieval
           nohup ./bore local 5901 --to bore.pub > tunnel.log 2>&1 &
-          sleep 5 
+          sleep 5
           
           echo "--------------------------------------------------------------------"
           echo "SESSION IS NOW ACTIVE."
@@ -59,7 +63,7 @@ jobs:
           echo "Use the 'bore.pub:PORT' address from the log above to connect."
           echo "Password is your VNC_PASSWORD secret. Username is not required."
 
-      - name: '4. Keep Workflow Alive'
+      - name: '6. Keep Workflow Alive'
         run: |
           echo "Session will remain active for approximately 6 hours."
           sleep 21000
