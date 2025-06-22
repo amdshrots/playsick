@@ -18,12 +18,9 @@ jobs:
           brew install tiger-vnc
 
           echo "Querying Homebrew for executable paths..."
-          # Use 'brew list' which is the definitive source of truth for installed file paths.
-          # We search for a path ending in '/bin/tigervncpasswd' to be precise.
           PASSWD_CMD=$(brew list tiger-vnc | grep '/bin/tigervncpasswd$' | head -n 1)
           SERVER_CMD=$(brew list tiger-vnc | grep '/bin/tigervncserver$' | head -n 1)
           
-          # This is the most critical check.
           if [ -z "$PASSWD_CMD" ] || [ -z "$SERVER_CMD" ]; then
             echo "FATAL: Could not find required executables via 'brew list'."
             echo "--- DUMPING ALL INSTALLED FILES FOR tiger-vnc ---"
@@ -35,7 +32,7 @@ jobs:
           echo "Found tigervncpasswd at: $PASSWD_CMD"
           echo "Found tigervncserver at: $SERVER_CMD"
 
-          # Export the discovered paths for subsequent steps to use.
+          # Export the discovered paths for the next step to use.
           echo "passwd_cmd=$PASSWD_CMD" >> $GITHUB_OUTPUT
           echo "server_cmd=$SERVER_CMD" >> $GITHUB_OUTPUT
 
@@ -52,11 +49,9 @@ jobs:
           echo "TigerVNC password configured successfully."
 
       - name: '2. Start VNC Server and Tunnel'
-        # Depend on the setup step to ensure it completes successfully first
-        needs: setup_vnc
         run: |
           echo "Starting TigerVNC server using discovered path..."
-          # Use the output from the previous step
+          # Use the output from the previous step. Steps run sequentially so this is guaranteed to be available.
           "${{ steps.setup_vnc.outputs.server_cmd }}" :1 -localhost no -SecurityTypes VncAuth -PasswordFile ~/.vnc/passwd &
           sleep 5
 
