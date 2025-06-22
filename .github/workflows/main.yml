@@ -1,6 +1,6 @@
 # .github/workflows/main.yml
 
-name: macOS Remote Desktop (Final)
+name: macOS Remote Desktop (Direct Control)
 
 on:
   workflow_dispatch:
@@ -11,31 +11,22 @@ jobs:
     timeout-minutes: 350
 
     steps:
-      - name: '1. Prepare System and Enable VNC'
+      - name: '1. Enable VNC Service with VNC Password'
         run: |
-          echo "Setting password for 'runner' user and creating 'rdpuser'..."
           echo "::add-mask::${{ secrets.RDP_USER_PASSWORD }}"
           
-          # Set a known password for the existing 'runner' user
-          sudo dscl . -passwd /Users/runner "${{ secrets.RDP_USER_PASSWORD }}"
-
-          # Create a secondary user (this helps initialize the VNC service properly)
-          sudo dscl . -create /Users/rdpuser
-          sudo dscl . -create /Users/rdpuser UserShell /bin/bash
-          sudo dscl . -create /Users/rdpuser RealName "RDP User"
-          sudo dscl . -create /Users/rdpuser UniqueID "1001"
-          sudo dscl . -passwd /Users/rdpuser "${{ secrets.RDP_USER_PASSWORD }}"
-          sudo dscl . -append /Groups/admin GroupMembership rdpuser
-          
-          echo "Enabling and configuring built-in VNC Server..."
+          echo "Enabling VNC Service for the current user..."
+          # Activate the ARD Agent and allow access
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on
           
-          # THE CORRECTED SYNTAX: Use '-setvncpw -vncpw' as documented in the log
+          echo "Setting a VNC-specific password..."
+          # This command sets a password for the VNC service itself, not any macOS user account.
+          # This is the key to bypassing user-level authentication issues.
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -clientopts -setvncpw -vncpw "${{ secrets.RDP_USER_PASSWORD }}" -setvnclegacy -vnclegacy yes
 
           echo "VNC service is configured and active."
 
-      - name: '2. Create Tunnel and Keep Alive'
+      - name: '2. Create Tunnel and Provide Instructions'
         run: |
           echo "Downloading and running bore tunnel..."
           curl -LSs https://github.com/ekzhang/bore/releases/download/v0.5.0/bore-v0.5.0-x86_64-apple-darwin.tar.gz | tar -xz
@@ -48,6 +39,9 @@ jobs:
           echo "--------------------------------------------------------------------"
           echo "SESSION IS NOW ACTIVE. READ LOGIN INSTRUCTIONS CAREFULLY."
           cat tunnel.log
+          echo "--------------------------------------------------------------------"
+          echo "Connect with RealVNC Viewer. When prompted for authentication,"
+          echo "LEAVE THE USERNAME BLANK and enter your secret password."
           echo "--------------------------------------------------------------------"
           
           sleep 21000
