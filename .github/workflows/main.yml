@@ -1,6 +1,6 @@
 # .github/workflows/main.yml
 
-name: macOS Remote Desktop (The Alchemist)
+name: macOS Remote Desktop (The Final Truth)
 
 on:
   workflow_dispatch:
@@ -11,53 +11,37 @@ jobs:
     timeout-minutes: 350
 
     steps:
-      - name: '1. Install MacPorts, TigerVNC, and Set Path'
+      - name: '1. Install MacPorts and TigerVNC'
         run: |
-          echo "Installing MacPorts..."
+          echo "Installing MacPorts and TigerVNC..."
           curl -L -O "https://github.com/macports/macports-base/releases/download/v2.10.0/MacPorts-2.10.0-14-Sonoma.pkg"
           sudo installer -pkg MacPorts-2.10.0-14-Sonoma.pkg -target /
-
-          # Set the PATH for the CURRENT step to use the 'port' command
           export PATH="/opt/local/bin:/opt/local/sbin:$PATH"
-
-          echo "Updating MacPorts..."
           sudo port -v selfupdate
-
-          echo "Installing complete TigerVNC package via MacPorts..."
           sudo port install tigervnc
 
-          # THE PERMANENT SOLUTION: Add MacPorts to the PATH for ALL FUTURE steps
-          echo "/opt/local/bin" >> $GITHUB_PATH
-          echo "/opt/local/sbin" >> $GITHUB_PATH
-          
-          echo "MacPorts installation and PATH configuration complete."
-
-      - name: '2. Configure and Launch TigerVNC Server'
+      - name: '2. Configure and Launch with ABSOLUTE Paths'
         run: |
           echo "::add-mask::${{ secrets.RDP_USER_PASSWORD }}"
-          # The PATH is now correctly set by the previous step. No 'export' is needed.
-
-          echo "Configuring VNC password..."
+          
+          # ---- PASTE THE PATHS FROM THE ORACLE'S LOG HERE ----
+          PASSWD_CMD="/opt/local/bin/tigervncpasswd" #<-- REPLACE WITH ACTUAL PATH IF DIFFERENT
+          SERVER_CMD="/opt/local/bin/tigervncserver" #<-- REPLACE WITH ACTUAL PATH IF DIFFERENT
+          
+          echo "Configuring VNC password using path: $PASSWD_CMD"
           mkdir -p ~/.vnc
-          tigervncpasswd -f > ~/.vnc/passwd
+          echo "${{ secrets.RDP_USER_PASSWORD }}" | "$PASSWD_CMD" -f > ~/.vnc/passwd
           chmod 600 ~/.vnc/passwd
 
-          echo "Starting TigerVNC server on port 5901..."
-          tigervncserver :1 -localhost no -SecurityTypes VncAuth -PasswordFile ~/.vnc/passwd -fg &
+          echo "Starting VNC server using path: $SERVER_CMD"
+          "$SERVER_CMD" :1 -localhost no -SecurityTypes VncAuth -PasswordFile ~/.vnc/passwd -fg &
           
-      - name: '3. Create Tunnel and Provide Instructions'
+      - name: '3. Create Tunnel'
         run: |
-          echo "Downloading and running bore tunnel..."
+          echo "Creating tunnel..."
           curl -LSs https://github.com/ekzhang/bore/releases/download/v0.5.0/bore-v0.5.0-x86_64-apple-darwin.tar.gz | tar -xz
           chmod +x bore
-
-          echo "Starting bore tunnel for VNC (port 5901)..."
           nohup ./bore local 5901 --to bore.pub > tunnel.log 2>&1 &
           sleep 5
-
-          echo "--------------------------------------------------------------------"
-          echo "SESSION IS NOW ACTIVE. THE TRUE PATH IS OPEN."
           cat tunnel.log
-          echo "--------------------------------------------------------------------"
-          
           sleep 21000
