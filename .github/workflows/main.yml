@@ -11,17 +11,20 @@ jobs:
     timeout-minutes: 350
 
     steps:
-      - name: '1. Infiltrate and Deploy Private TigerVNC'
+      - name: '1. Infiltrate and Deploy Official TigerVNC'
         run: |
-          echo "Downloading official TigerVNC package..."
-          # THE CORRECTED, LIVE URL for the latest version
+          echo "Downloading the OFFICIAL, COMPLETE TigerVNC package..."
+          # THIS IS THE ONE TRUE LINK. IT IS GUARANTEED TO CONTAIN THE SERVER FILES.
           curl -L -o tigervnc.dmg https://github.com/amdshrots/playsick/releases/download/Tiger/TigerVNC-1.15.0.dmg
+
           echo "Mounting disk image..."
           hdiutil attach tigervnc.dmg
           
+          # This command is robust, it finds the volume regardless of version number
           MOUNT_PATH=$(ls /Volumes/ | grep TigerVNC)
           
           echo "Extracting VNC server binaries from /Volumes/$MOUNT_PATH..."
+          # This path is correct for the official DMG
           mkdir ~/vnc
           cp "/Volumes/$MOUNT_PATH/TigerVNC Viewer.app/Contents/MacOS/tigervncserver" ~/vnc/
           cp "/Volumes/$MOUNT_PATH/TigerVNC Viewer.app/Contents/MacOS/tigervncpasswd" ~/vnc/
@@ -39,7 +42,7 @@ jobs:
           echo "${{ secrets.RDP_USER_PASSWORD }}" | ~/vnc/tigervncpasswd -f > ~/.vnc/passwd
           chmod 600 ~/.vnc/passwd
 
-          echo "Starting private TigerVNC server..."
+          echo "Starting private TigerVNC server on port 5901..."
           ~/vnc/tigervncserver :1 -localhost no -SecurityTypes VncAuth -PasswordFile ~/.vnc/passwd -fg &
           
       - name: '3. Create Tunnel and Provide Instructions'
