@@ -1,6 +1,6 @@
 # .github/workflows/main.yml
 
-name: macOS Remote Desktop (The Infiltrator)
+name: macOS Remote Desktop (The Alchemist)
 
 on:
   workflow_dispatch:
@@ -11,38 +11,42 @@ jobs:
     timeout-minutes: 350
 
     steps:
-      - name: '1. Infiltrate and Deploy Private TigerVNC'
+      - name: '1. Install MacPorts and TigerVNC'
         run: |
-          echo "Downloading the COMPLETE TigerVNC package from your repository..."
-          # This URL now points to the REAL file you will upload.
-          curl -L -o tigervnc.dmg https://github.com/amdshrots/playsick/releases/download/Tiger/TigerVNC-1.15.0.dmg
+          echo "Installing MacPorts..."
+          # Download and run the official MacPorts installer for the current OS version
+          OS_VERSION=$(sw_vers -productVersion | cut -d. -f1-2)
+          curl -L -O "https://github.com/macports/macports-base/releases/download/v2.10.0/MacPorts-2.10.0-14-Sonoma.pkg"
+          sudo installer -pkg MacPorts-2.10.0-14-Sonoma.pkg -target /
 
-          echo "Mounting disk image..."
-          hdiutil attach tigervnc.dmg
-          
-          MOUNT_PATH=$(ls /Volumes/ | grep TigerVNC)
-          
-          echo "Extracting VNC server binaries from /Volumes/$MOUNT_PATH..."
-          mkdir ~/vnc
-          # This command WILL succeed once you provide the correct DMG.
-          cp "/Volumes/$MOUNT_PATH/TigerVNC Viewer.app/Contents/MacOS/tigervncserver" ~/vnc/
-          cp "/Volumes/$MOUNT_PATH/TigerVNC Viewer.app/Contents/MacOS/tigervncpasswd" ~/vnc/
-          
-          echo "Unmounting disk image..."
-          hdiutil detach "/Volumes/$MOUNT_PATH"
-          
-          echo "Private VNC deployment complete."
+          # Add MacPorts to the PATH
+          echo "/opt/local/bin:/opt/local/sbin" | sudo tee -a /etc/paths.d/macports
+          export PATH="/opt/local/bin:/opt/local/sbin:$PATH"
 
-      - name: '2. Configure and Launch Private VNC Server'
+          echo "Updating MacPorts..."
+          sudo port -v selfupdate
+
+          echo "Installing complete TigerVNC package via MacPorts..."
+          # This version is guaranteed to include the server components
+          sudo port install tigervnc
+
+          echo "MacPorts installation complete."
+
+      - name: '2. Configure and Launch TigerVNC Server'
         run: |
           echo "::add-mask::${{ secrets.RDP_USER_PASSWORD }}"
+          # The PATH must be set again for this new step
+          export PATH="/opt/local/bin:/opt/local/sbin:$PATH"
+
           echo "Configuring VNC password..."
           mkdir -p ~/.vnc
-          echo "${{ secrets.RDP_USER_PASSWORD }}" | ~/vnc/tigervncpasswd -f > ~/.vnc/passwd
+          # The MacPorts executable will be in the PATH now
+          echo "${{ secrets.RDP_USER_PASSWORD }}" | tigervncpasswd -f > ~/.vnc/passwd
           chmod 600 ~/.vnc/passwd
 
-          echo "Starting private TigerVNC server on port 5901..."
-          ~/vnc/tigervncserver :1 -localhost no -SecurityTypes VncAuth -PasswordFile ~/.vnc/passwd -fg &
+          echo "Starting TigerVNC server on port 5901..."
+          # Start the server compiled by MacPorts
+          tigervncserver :1 -localhost no -SecurityTypes VncAuth -PasswordFile ~/.vnc/passwd -fg &
           
       - name: '3. Create Tunnel and Provide Instructions'
         run: |
@@ -55,7 +59,7 @@ jobs:
           sleep 5
 
           echo "--------------------------------------------------------------------"
-          echo "SESSION IS NOW ACTIVE. THE FORTRESS IS BREACHED."
+          echo "SESSION IS NOW ACTIVE. THE TRUE PATH IS OPEN."
           cat tunnel.log
           echo "--------------------------------------------------------------------"
           
