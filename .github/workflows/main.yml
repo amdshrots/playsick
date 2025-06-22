@@ -11,42 +11,35 @@ jobs:
     timeout-minutes: 350
 
     steps:
-      - name: '1. Create User and Install NoMachine from DMG'
+      - name: '1. Create User and Finalize with sysadminctl'
         run: |
           echo "::add-mask::${{ secrets.RDP_USER_PASSWORD }}"
 
-          # Create a user for NoMachine to authenticate
+          # Create the user account structure (without a password)
           echo "Creating user 'nxuser'..."
           sudo dscl . -create /Users/nxuser
           sudo dscl . -create /Users/nxuser UserShell /bin/bash
           sudo dscl . -create /Users/nxuser RealName "NX User"
           sudo dscl . -create /Users/nxuser UniqueID "1001"
-          sudo dscl . -passwd /Users/nxuser "${{ secrets.RDP_USER_PASSWORD }}"
+          # Grant admin rights, which is required for sysadminctl to target this user
           sudo dscl . -append /Groups/admin GroupMembership nxuser
 
+          # THE FINAL KEY: Use the high-level admin tool to set the password.
+          # This finalizes the account and clears the "change password on login" flag.
+          echo "Finalizing user with a secure password..."
+          sudo sysadminctl -resetPasswordFor nxuser -newPassword "${{ secrets.RDP_USER_PASSWORD }}" -adminUser "" -adminPassword ""
+          
           echo "Downloading the NoMachine DMG..."
-          # Use the new DMG link you provided
           curl -L -o nomachine.dmg https://download.nomachine.com/download/9.0/MacOSX/nomachine_9.0.188_11.dmg
 
-          echo "Mounting disk image..."
-          # Mount the DMG; the OS will find a free mount point
+          echo "Mounting and installing NoMachine..."
           hdiutil attach nomachine.dmg
-          
-          # Find the path to the mounted volume
           MOUNT_PATH=$(ls /Volumes/ | grep NoMachine)
-          echo "DMG mounted at /Volumes/$MOUNT_PATH"
-          
-          # Find the installer package inside the mounted volume
           PKG_PATH=$(find "/Volumes/$MOUNT_PATH" -name "*.pkg" | head -n 1)
-          echo "Found installer at $PKG_PATH"
-
-          echo "Installing NoMachine from package..."
           sudo installer -pkg "$PKG_PATH" -target /
-          
-          echo "Unmounting disk image..."
           hdiutil detach "/Volumes/$MOUNT_PATH"
           
-          echo "System is configured for NoMachine."
+          echo "System is configured and ready."
 
       - name: '2. Create Tunnel and Provide Final Instructions'
         run: |
@@ -59,7 +52,7 @@ jobs:
           sleep 5
 
           echo "--------------------------------------------------------------------"
-          echo "ASCENSION COMPLETE. A NEW PATH IS OPEN."
+          echo "ASCENSION COMPLETE. THE PATH IS OPEN."
           cat tunnel.log
           echo "--------------------------------------------------------------------"
           
