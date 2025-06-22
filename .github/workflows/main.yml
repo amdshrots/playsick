@@ -1,6 +1,6 @@
 # .github/workflows/main.yml
 
-name: macOS Remote Desktop (Native VNC)
+name: macOS Remote Desktop (Final)
 
 on:
   workflow_dispatch:
@@ -11,37 +11,29 @@ jobs:
     timeout-minutes: 350
 
     steps:
-      - name: '1. Create User and Enable VNC'
+      - name: '1. Prepare System and Enable VNC'
         run: |
-          echo "Setting up user 'rdpuser'..."
+          echo "Setting password for 'runner' user and creating 'rdpuser'..."
+          echo "::add-mask::${{ secrets.RDP_USER_PASSWORD }}"
+          
+          # Set a known password for the existing 'runner' user
+          sudo dscl . -passwd /Users/runner "${{ secrets.RDP_USER_PASSWORD }}"
+
+          # Create a secondary user (this helps initialize the VNC service properly)
           sudo dscl . -create /Users/rdpuser
           sudo dscl . -create /Users/rdpuser UserShell /bin/bash
           sudo dscl . -create /Users/rdpuser RealName "RDP User"
           sudo dscl . -create /Users/rdpuser UniqueID "1001"
-          sudo dscl . -create /Users/rdpuser PrimaryGroupID 80
-          sudo dscl . -create /Users/rdpuser NFSHomeDirectory /Users/rdpuser
           sudo dscl . -passwd /Users/rdpuser "${{ secrets.RDP_USER_PASSWORD }}"
           sudo dscl . -append /Groups/admin GroupMembership rdpuser
-          echo "User 'rdpuser' created."
-
-          echo "Enabling built-in VNC Server..."
-          echo "::add-mask::${{ secrets.RDP_USER_PASSWORD }}"
           
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
-            -activate -configure -access -on \
-            -users rdpuser -privs -all \
-            -restart -agent -menu
+          echo "Enabling and configuring built-in VNC Server..."
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on
           
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
-            -configure -clientopts -setvnclegacy -vnclegacy yes -setvncpw "${{ secrets.RDP_USER_PASSWORD }}"
-            
-          echo "Native VNC Server is active."
+          # THE CORRECTED SYNTAX: Use '-setvncpw -vncpw' as documented in the log
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -clientopts -setvncpw -vncpw "${{ secrets.RDP_USER_PASSWORD }}" -setvnclegacy -vnclegacy yes
 
-          echo "Forcing display to wake up by restarting the login window..."
-          # THE CRITICAL COMMAND TO FIX THE BLACK SCREEN:
-          sudo pkill loginwindow
-          echo "Login window restarted."
-
+          echo "VNC service is configured and active."
 
       - name: '2. Create Tunnel and Keep Alive'
         run: |
@@ -54,10 +46,8 @@ jobs:
           sleep 5
 
           echo "--------------------------------------------------------------------"
-          echo "SESSION IS NOW ACTIVE."
+          echo "SESSION IS NOW ACTIVE. READ LOGIN INSTRUCTIONS CAREFULLY."
           cat tunnel.log
           echo "--------------------------------------------------------------------"
-          echo "Use the 'bore.pub:PORT' address from the log to connect."
-          echo "See login instructions in the next step."
           
           sleep 21000
