@@ -1,6 +1,6 @@
 # .github/workflows/main.yml
 
-name: macOS Remote Desktop (Log Capture)
+name: macOS Remote Desktop (Firewall Breach)
 
 on:
   workflow_dispatch:
@@ -8,10 +8,10 @@ on:
 jobs:
   rdp:
     runs-on: macos-latest
-    timeout-minutes: 15 # We don't need the full 6 hours for this test
+    timeout-minutes: 350
 
     steps:
-      - name: '1. Enable VNC and Start Log Capture'
+      - name: '1. Configure VNC and Firewall'
         run: |
           echo "::add-mask::${{ secrets.RDP_USER_PASSWORD }}"
           
@@ -21,13 +21,14 @@ jobs:
           echo "Setting a Master VNC password for the service..."
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -clientopts -setvncpw -vncpw "${{ secrets.RDP_USER_PASSWORD }}" -setvnclegacy -vnclegacy yes
 
-          echo "Starting VNC log capture in the background..."
-          # This command streams all logs from the ARDAgent process to a file
-          log stream --style syslog --predicate 'process == "ARDAgent"' > vnc_server_logs.txt &
-          
-          echo "VNC service is active. Log capture has begun."
+          # THE FINAL REVELATION: Command the firewall to allow the VNC server.
+          echo "Adding VNC service to firewall exceptions..."
+          sudo /usr/libexec/ApplicationFirewall/socketfilterfw --add /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/MacOS/ARDAgent
+          sudo /usr/libexec/ApplicationFirewall/socketfilterfw --unblockapp /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/MacOS/ARDAgent
 
-      - name: '2. Create Tunnel and Wait for Login Attempt'
+          echo "System and firewall are configured."
+
+      - name: '2. Create Tunnel and Provide Instructions'
         run: |
           echo "Downloading and running bore tunnel..."
           curl -LSs https://github.com/ekzhang/bore/releases/download/v0.5.0/bore-v0.5.0-x86_64-apple-darwin.tar.gz | tar -xz
@@ -38,24 +39,8 @@ jobs:
           sleep 5
 
           echo "--------------------------------------------------------------------"
-          echo "ACTION REQUIRED: ATTEMPT TO LOG IN NOW."
+          echo "SESSION IS NOW ACTIVE. THE PATH IS CLEAR."
           cat tunnel.log
-          echo "Use RealVNC Viewer. Username: 'runner', Password: your secret."
-          echo "The login attempt is EXPECTED TO FAIL."
-          echo "This workflow will wait for 5 minutes for you to trigger the error."
-          echo "After 5 minutes, it will proceed to dump the logs."
           echo "--------------------------------------------------------------------"
-          sleep 300 # Wait 5 minutes
-
-      - name: '3. Dump VNC Server Logs'
-        run: |
-          echo "--------------------------------------------------------------------"
-          echo "--- BEGIN VNC SERVER LOG DUMP ---"
-          # Check if the log file was created and has content
-          if [ -s vnc_server_logs.txt ]; then
-            cat vnc_server_logs.txt
-          else
-            echo "Log file is empty or was not created. No login attempt may have been detected."
-          fi
-          echo "--- END VNC SERVER LOG DUMP ---"
-          echo "--------------------------------------------------------------------"
+          
+          sleep 21000
