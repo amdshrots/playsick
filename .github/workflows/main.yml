@@ -1,6 +1,6 @@
 # .github/workflows/main.yml
 
-name: macOS Remote Desktop (Final Grant)
+name: macOS Remote Desktop (Final Assembly)
 
 on:
   workflow_dispatch:
@@ -11,11 +11,11 @@ jobs:
     timeout-minutes: 350
 
     steps:
-      - name: '1. Create User and Grant VNC Privileges'
+      - name: '1. Create User, Grant VNC, and Wake Display'
         run: |
           echo "::add-mask::${{ secrets.RDP_USER_PASSWORD }}"
 
-          # Create the user. This is reliable.
+          # Create the user 'rdpuser'
           echo "Creating user 'rdpuser'..."
           sudo dscl . -create /Users/rdpuser
           sudo dscl . -create /Users/rdpuser UserShell /bin/bash
@@ -24,11 +24,15 @@ jobs:
           sudo dscl . -passwd /Users/rdpuser "${{ secrets.RDP_USER_PASSWORD }}"
           sudo dscl . -append /Groups/admin GroupMembership rdpuser
 
-          # The Final Command: Grant privileges directly to the user.
+          # Grant VNC privileges directly to the new user
           echo "Granting VNC privileges to 'rdpuser'..."
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -users rdpuser -privs -all -restart -agent -menu
 
-          echo "VNC service is configured for 'rdpuser'."
+          # THE FINAL KEY: Force the login window to restart, which initializes the display.
+          echo "Forcing display to wake up by restarting the login window..."
+          sudo pkill loginwindow || true
+
+          echo "System is configured and ready."
 
       - name: '2. Create Tunnel and Provide Instructions'
         run: |
@@ -41,7 +45,7 @@ jobs:
           sleep 5
 
           echo "--------------------------------------------------------------------"
-          echo "SESSION IS NOW ACTIVE. LOGIN WITH THE NEW USER."
+          echo "SESSION IS NOW ACTIVE. READ FINAL LOGIN INSTRUCTIONS."
           cat tunnel.log
           echo "--------------------------------------------------------------------"
           
