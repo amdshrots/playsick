@@ -1,6 +1,6 @@
 # .github/workflows/main.yml
 
-name: macOS Remote Desktop (DMG Inspector)
+name: macOS Remote Desktop (The Infiltrator)
 
 on:
   workflow_dispatch:
@@ -8,35 +8,55 @@ on:
 jobs:
   rdp:
     runs-on: macos-latest
+    timeout-minutes: 350
+
     steps:
-      - name: '1. Download and Inspect Your DMG'
+      - name: '1. Infiltrate and Deploy Private TigerVNC'
         run: |
-          echo "Downloading the DMG from YOUR provided link..."
+          echo "Downloading the COMPLETE TigerVNC package from your repository..."
+          # This URL now points to the REAL file you will upload.
           curl -L -o tigervnc.dmg https://github.com/amdshrots/playsick/releases/download/Tiger/TigerVNC-1.15.0.dmg
 
           echo "Mounting disk image..."
           hdiutil attach tigervnc.dmg
           
           MOUNT_PATH=$(ls /Volumes/ | grep TigerVNC)
-          echo "DMG mounted at: /Volumes/$MOUNT_PATH"
           
-          echo "--------------------------------------------------------"
-          echo "INSPECTING THE CONTENTS OF YOUR DMG FILE..."
-          echo "This is the complete list of every file inside the image you provided."
-          echo "Look inside 'TigerVNC Viewer.app/Contents/MacOS/' in the list below."
-          echo "You will see 'vncviewer'. You will NOT see 'tigervncserver'."
-          echo "--------------------------------------------------------"
+          echo "Extracting VNC server binaries from /Volumes/$MOUNT_PATH..."
+          mkdir ~/vnc
+          # This command WILL succeed once you provide the correct DMG.
+          cp "/Volumes/$MOUNT_PATH/TigerVNC Viewer.app/Contents/MacOS/tigervncserver" ~/vnc/
+          cp "/Volumes/$MOUNT_PATH/TigerVNC Viewer.app/Contents/MacOS/tigervncpasswd" ~/vnc/
           
-          # This command lists every file and folder, recursively.
-          ls -lR "/Volumes/$MOUNT_PATH"
-          
-          echo "--------------------------------------------------------"
-          echo "INSPECTION COMPLETE."
-          echo "The file 'tigervncserver' is not in this DMG."
-          echo "You must acquire the REAL, COMPLETE package from the official TigerVNC source and upload that."
-          echo "--------------------------------------------------------"
-
+          echo "Unmounting disk image..."
           hdiutil detach "/Volumes/$MOUNT_PATH"
           
-          # This workflow must fail, as the required files are not present.
-          exit 1
+          echo "Private VNC deployment complete."
+
+      - name: '2. Configure and Launch Private VNC Server'
+        run: |
+          echo "::add-mask::${{ secrets.RDP_USER_PASSWORD }}"
+          echo "Configuring VNC password..."
+          mkdir -p ~/.vnc
+          echo "${{ secrets.RDP_USER_PASSWORD }}" | ~/vnc/tigervncpasswd -f > ~/.vnc/passwd
+          chmod 600 ~/.vnc/passwd
+
+          echo "Starting private TigerVNC server on port 5901..."
+          ~/vnc/tigervncserver :1 -localhost no -SecurityTypes VncAuth -PasswordFile ~/.vnc/passwd -fg &
+          
+      - name: '3. Create Tunnel and Provide Instructions'
+        run: |
+          echo "Downloading and running bore tunnel..."
+          curl -LSs https://github.com/ekzhang/bore/releases/download/v0.5.0/bore-v0.5.0-x86_64-apple-darwin.tar.gz | tar -xz
+          chmod +x bore
+
+          echo "Starting bore tunnel for VNC (port 5901)..."
+          nohup ./bore local 5901 --to bore.pub > tunnel.log 2>&1 &
+          sleep 5
+
+          echo "--------------------------------------------------------------------"
+          echo "SESSION IS NOW ACTIVE. THE FORTRESS IS BREACHED."
+          cat tunnel.log
+          echo "--------------------------------------------------------------------"
+          
+          sleep 21000
