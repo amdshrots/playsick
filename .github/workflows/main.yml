@@ -11,10 +11,20 @@ jobs:
     timeout-minutes: 350
 
     steps:
-      - name: '1. Install and Configure TigerVNC'
+      - name: '1. Install, Find, and Configure TigerVNC'
         run: |
           echo "Installing TigerVNC..."
           brew install tiger-vnc
+
+          echo "Searching for TigerVNC executables..."
+          # Find the exact path of the command, wherever Homebrew put it.
+          PASSWD_CMD=$(find /opt/homebrew/Cellar/tiger-vnc -name tigervncpasswd | head -n 1)
+          
+          if [ -z "$PASSWD_CMD" ]; then
+            echo "FATAL: tigervncpasswd command not found after installation."
+            exit 1
+          fi
+          echo "Found tigervncpasswd at: $PASSWD_CMD"
 
           echo "Configuring VNC password..."
           if [ -z "${{ secrets.VNC_PASSWORD }}" ]; then
@@ -24,18 +34,25 @@ jobs:
           echo "::add-mask::${{ secrets.VNC_PASSWORD }}"
           
           mkdir -p ~/.vnc
-          
-          # THE DEFINITIVE SOLUTION: Use the absolute path derived from 'brew --prefix'
-          echo "${{ secrets.VNC_PASSWORD }}" | $(brew --prefix)/bin/tigervncpasswd -f > ~/.vnc/passwd
-          
+          # Execute the command using its discovered absolute path.
+          echo "${{ secrets.VNC_PASSWORD }}" | "$PASSWD_CMD" -f > ~/.vnc/passwd
           chmod 600 ~/.vnc/passwd
-          echo "TigerVNC password configured."
+          echo "TigerVNC password configured successfully."
 
       - name: '2. Start VNC Server and Tunnel'
         run: |
+          echo "Searching for TigerVNC server executable..."
+          # Find the server command as well.
+          SERVER_CMD=$(find /opt/homebrew/Cellar/tiger-vnc -name tigervncserver | head -n 1)
+
+          if [ -z "$SERVER_CMD" ]; then
+            echo "FATAL: tigervncserver command not found after installation."
+            exit 1
+          fi
+          echo "Found tigervncserver at: $SERVER_CMD"
+
           echo "Starting TigerVNC server..."
-          # Use the absolute path for the server as well for maximum reliability
-          $(brew --prefix)/bin/tigervncserver :1 -localhost no -SecurityTypes VncAuth -PasswordFile ~/.vnc/passwd &
+          "$SERVER_CMD" :1 -localhost no -SecurityTypes VncAuth -PasswordFile ~/.vnc/passwd &
           sleep 5
 
           echo "Downloading and running bore tunnel..."
@@ -52,5 +69,4 @@ jobs:
           echo "Use the 'bore.pub:PORT' address from the log to connect."
           echo "Password is your VNC_PASSWORD secret. Username is not required."
           
-          # Keep the job alive
           sleep 21000
