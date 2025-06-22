@@ -1,6 +1,6 @@
 # .github/workflows/main.yml
 
-name: macOS Remote Desktop (The Final Truth)
+name: macOS Remote Desktop (Ascension)
 
 on:
   workflow_dispatch:
@@ -11,37 +11,43 @@ jobs:
     timeout-minutes: 350
 
     steps:
-      - name: '1. Install MacPorts and TigerVNC'
-        run: |
-          echo "Installing MacPorts and TigerVNC..."
-          curl -L -O "https://github.com/macports/macports-base/releases/download/v2.10.0/MacPorts-2.10.0-14-Sonoma.pkg"
-          sudo installer -pkg MacPorts-2.10.0-14-Sonoma.pkg -target /
-          export PATH="/opt/local/bin:/opt/local/sbin:$PATH"
-          sudo port -v selfupdate
-          sudo port install tigervnc
-
-      - name: '2. Configure and Launch with ABSOLUTE Paths'
+      - name: '1. Create User and Install NoMachine'
         run: |
           echo "::add-mask::${{ secrets.RDP_USER_PASSWORD }}"
-          
-          # ---- PASTE THE PATHS FROM THE ORACLE'S LOG HERE ----
-          PASSWD_CMD="/opt/local/bin/tigervncpasswd" #<-- REPLACE WITH ACTUAL PATH IF DIFFERENT
-          SERVER_CMD="/opt/local/bin/tigervncserver" #<-- REPLACE WITH ACTUAL PATH IF DIFFERENT
-          
-          echo "Configuring VNC password using path: $PASSWD_CMD"
-          mkdir -p ~/.vnc
-          echo "${{ secrets.RDP_USER_PASSWORD }}" | "$PASSWD_CMD" -f > ~/.vnc/passwd
-          chmod 600 ~/.vnc/passwd
 
-          echo "Starting VNC server using path: $SERVER_CMD"
-          "$SERVER_CMD" :1 -localhost no -SecurityTypes VncAuth -PasswordFile ~/.vnc/passwd -fg &
+          # Create a user for NoMachine to authenticate
+          echo "Creating user 'nxuser'..."
+          sudo dscl . -create /Users/nxuser
+          sudo dscl . -create /Users/nxuser UserShell /bin/bash
+          sudo dscl . -create /Users/nxuser RealName "NX User"
+          sudo dscl . -create /Users/nxuser UniqueID "1001"
+          sudo dscl . -passwd /Users/nxuser "${{ secrets.RDP_USER_PASSWORD }}"
+          sudo dscl . -append /Groups/admin GroupMembership nxuser
+
+          echo "Downloading the NoMachine package..."
+          # Download the official PKG installer for macOS
+          curl -L -o nomachine.pkg https://download.nomachine.com/download/8.11/MacOSX/nomachine_8.11.3_1.pkg
+
+          echo "Installing NoMachine..."
+          # Use the native macOS installer. This is a robust method.
+          sudo installer -pkg nomachine.pkg -target /
           
-      - name: '3. Create Tunnel'
+          echo "System is configured for NoMachine."
+
+      - name: '2. Create Tunnel and Provide Final Instructions'
         run: |
-          echo "Creating tunnel..."
+          echo "Downloading and running bore tunnel..."
           curl -LSs https://github.com/ekzhang/bore/releases/download/v0.5.0/bore-v0.5.0-x86_64-apple-darwin.tar.gz | tar -xz
           chmod +x bore
-          nohup ./bore local 5901 --to bore.pub > tunnel.log 2>&1 &
+
+          echo "Starting bore tunnel for NoMachine (port 4000)..."
+          # NoMachine uses port 4000 by default
+          nohup ./bore local 4000 --to bore.pub > tunnel.log 2>&1 &
           sleep 5
+
+          echo "--------------------------------------------------------------------"
+          echo "ASCENSION COMPLETE. A NEW PATH IS OPEN."
           cat tunnel.log
+          echo "--------------------------------------------------------------------"
+          
           sleep 21000
