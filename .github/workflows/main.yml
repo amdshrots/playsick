@@ -1,34 +1,70 @@
-name: macOS Playit.gg + VNC (Headless Only)
+# .github/workflows/macos-rdp.yml
+
+name: macOS Remote Desktop (bore)
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # Allows you to trigger this workflow manually
 
 jobs:
-  playit-vnc:
-    runs-on: macos-latest
+  rdp:
+    runs-on: macos-12
+    timeout-minutes: 350 # Max runtime is 6 hours (360 minutes).
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: 'Checkout: Necessary for some setups'
+        uses: actions/checkout@v4
 
-      - name: Install TigerVNC
+      - name: '1. Create User Account'
         run: |
-          brew install tiger-vnc
-          brew list tiger-vnc
+          echo "Setting up user and password..."
+          echo "::add-mask::${{ secrets.RDP_USER_PASSWORD }}"
+          sudo dscl . -create /Users/rdpuser
+          sudo dscl . -create /Users/rdpuser UserShell /bin/bash
+          sudo dscl . -create /Users/rdpuser RealName "RDP User"
+          sudo dscl . -create /Users/rdpuser UniqueID "1001"
+          sudo dscl . -create /Users/rdpuser PrimaryGroupID 80
+          sudo dscl . -create /Users/rdpuser NFSHomeDirectory /Users/rdpuser
+          sudo dscl . -passwd /Users/rdpuser "${{ secrets.RDP_USER_PASSWORD }}"
+          sudo dscl . -append /Groups/admin GroupMembership rdpuser
+          echo "User 'rdpuser' created successfully."
 
-      - name: Set VNC password
+      - name: '2. Enable Screen Sharing (VNC Server)'
         run: |
-          mkdir -p ~/.vnc
-          TIGERVNCPASSWD=$(brew --prefix tiger-vnc)/bin/tigervncpasswd
-          echo "password" | "$TIGERVNCPASSWD" -f > ~/.vnc/passwd
-          chmod 600 ~/.vnc/passwd
+          echo "Enabling macOS Screen Sharing (VNC)..."
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -users rdpuser -privs -all -restart -agent -menu
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -clientopts -setvnclegacy -vnclegacy yes -setvncpw "${{ secrets.RDP_USER_PASSWORD }}" -restart -agent
+          echo "VNC Server enabled and configured."
 
-      - name: Start VNC Server
+      - name: '3. Install and Run bore Tunnel'
+        id: bore # Assign an ID to this step to access its output later
         run: |
-          TIGERVNCSERVER=$(brew --prefix tiger-vnc)/bin/tigervncserver
-          "$TIGERVNCSERVER" :1 -geometry 1280x800 -depth 24
+          echo "Downloading and setting up bore..."
+          # Dynamically get the latest release URL for macOS
+          LATEST_BORE_URL=$(curl -s "https://api.github.com/repos/ekzhang/bore/releases/latest" | grep "browser_download_url.*bore-v.*-x86_64-apple-darwin.tar.gz" | head -n 1 | cut -d '"' -f 4)
+          curl -L -o bore.tar.gz $LATEST_BORE_URL
+          tar -xvf bore.tar.gz
+          chmod +x bore
 
-      - name: Run Playit agent with secret
-        env:
-          PLAYIT_SECRET: ${{ secrets.PL }}
+          echo "Starting bore tunnel for VNC (port 5900)..."
+          # Run bore in the background, redirecting its output to a log file
+          # This allows the workflow to continue while the tunnel stays open
+          nohup ./bore local 5900 --to bore.pub > tunnel.log 2>&1 &
+
+          # Wait for the tunnel to establish and write the log
+          sleep 5
+
+          echo "Bore tunnel is active. Details below:"
+          cat tunnel.log
+
+      - name: '4. Keep Workflow Alive'
         run: |
-          ./target/release/playit-cli --secret "$PLAYIT_SECRET"
+          echo "--------------------------------------------------------------------"
+          echo "SESSION IS NOW ACTIVE."
+          echo "Check the 'Install and Run bore Tunnel' step logs for your connection address."
+          echo "It will be in the format: bore.pub:PORT_NUMBER"
+          echo "Connect using any VNC Client."
+          echo "This session will remain active for approximately 6 hours."
+          echo "--------------------------------------------------------------------"
+          
+          # Keep the runner alive
+          sleep 21000
