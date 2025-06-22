@@ -1,6 +1,6 @@
 # .github/workflows/main.yml
 
-name: macOS Remote Desktop (Final Ascension)
+name: macOS Remote Desktop (The Phoenix)
 
 on:
   workflow_dispatch:
@@ -11,7 +11,7 @@ jobs:
     timeout-minutes: 350
 
     steps:
-      - name: '1. Install NoMachine, Forge Key, and Issue Edict'
+      - name: '1. Install, Forge Key, and Rebirth the Server'
         run: |
           echo "Installing NoMachine..."
           curl -L -o nomachine.dmg https://download.nomachine.com/download/9.0/MacOSX/nomachine_9.0.188_11.dmg
@@ -26,16 +26,15 @@ jobs:
           cat ~/.ssh/nomachine_key.pub >> ~/.ssh/authorized_keys
           chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys
           
-          # THE EDICT: We rewrite the server's rules.
           echo "Issuing new SSH server configuration..."
-          # We append our rules to the end to ensure they are read and take precedence.
           echo "PubkeyAuthentication yes" | sudo tee -a /etc/ssh/sshd_config
-          echo "PasswordAuthentication no" | sudo tee -a /etc/ssh/sshd_config
           
-          # THE REBIRTH: We force the server to die and be reborn under our new law.
-          echo "Restarting SSH service to apply new Edict..."
-          sudo launchctl stop com.openssh.sshd
-          sudo launchctl start com.openssh.sshd
+          echo "Verifying Edict..."
+          sudo grep "PubkeyAuthentication" /etc/ssh/sshd_config
+          
+          # THE PHOENIX: Slay the old guard. The system will birth a new one that obeys our law.
+          echo "Forcing SSH server to read new Edict..."
+          sudo pkill sshd
           
           echo "Key forged. Edict issued. Server reborn."
 
