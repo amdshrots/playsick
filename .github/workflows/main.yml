@@ -1,32 +1,38 @@
 # .github/workflows/main.yml
 
-name: macOS Remote Desktop (Firewall Breach)
+name: macOS Remote Desktop (The Final Gambit)
 
 on:
   workflow_dispatch:
 
 jobs:
   rdp:
-    runs-on: macos-latest
+    runs-on: macos-12 # THE CRITICAL CHANGE: Target the Intel-based OS
     timeout-minutes: 350
 
     steps:
-      - name: '1. Configure VNC and Firewall'
+      - name: '1. Create User, Grant VNC, and Wake Display'
         run: |
           echo "::add-mask::${{ secrets.RDP_USER_PASSWORD }}"
-          
-          echo "Enabling VNC Service for all local users..."
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -allowAccessFor -allUsers -privs -all
 
-          echo "Setting a Master VNC password for the service..."
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -clientopts -setvncpw -vncpw "${{ secrets.RDP_USER_PASSWORD }}" -setvnclegacy -vnclegacy yes
+          # Create the user 'rdpuser'. This is a reliable method.
+          echo "Creating user 'rdpuser'..."
+          sudo dscl . -create /Users/rdpuser
+          sudo dscl . -create /Users/rdpuser UserShell /bin/bash
+          sudo dscl . -create /Users/rdpuser RealName "RDP User"
+          sudo dscl . -create /Users/rdpuser UniqueID "1001"
+          sudo dscl . -passwd /Users/rdpuser "${{ secrets.RDP_USER_PASSWORD }}"
+          sudo dscl . -append /Groups/admin GroupMembership rdpuser
 
-          # THE FINAL REVELATION: Command the firewall to allow the VNC server.
-          echo "Adding VNC service to firewall exceptions..."
-          sudo /usr/libexec/ApplicationFirewall/socketfilterfw --add /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/MacOS/ARDAgent
-          sudo /usr/libexec/ApplicationFirewall/socketfilterfw --unblockapp /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/MacOS/ARDAgent
+          # Grant VNC privileges directly to the new user.
+          echo "Granting VNC privileges to 'rdpuser'..."
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -users rdpuser -privs -all -restart -agent -menu
 
-          echo "System and firewall are configured."
+          # Force the login window to restart to initialize the display. This is likely to work on macos-12.
+          echo "Forcing display to wake up by restarting the login window..."
+          sudo pkill loginwindow
+
+          echo "System is configured and ready."
 
       - name: '2. Create Tunnel and Provide Instructions'
         run: |
@@ -39,7 +45,7 @@ jobs:
           sleep 5
 
           echo "--------------------------------------------------------------------"
-          echo "SESSION IS NOW ACTIVE. THE PATH IS CLEAR."
+          echo "SESSION IS NOW ACTIVE. THE FINAL PATH IS OPEN."
           cat tunnel.log
           echo "--------------------------------------------------------------------"
           
