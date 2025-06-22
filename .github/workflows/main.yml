@@ -1,6 +1,6 @@
 # .github/workflows/main.yml
 
-name: macOS Remote Desktop (Direct Control)
+name: macOS Remote Desktop (Final Grant)
 
 on:
   workflow_dispatch:
@@ -11,20 +11,24 @@ jobs:
     timeout-minutes: 350
 
     steps:
-      - name: '1. Enable VNC Service with VNC Password'
+      - name: '1. Create User and Grant VNC Privileges'
         run: |
           echo "::add-mask::${{ secrets.RDP_USER_PASSWORD }}"
-          
-          echo "Enabling VNC Service for the current user..."
-          # Activate the ARD Agent and allow access
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on
-          
-          echo "Setting a VNC-specific password..."
-          # This command sets a password for the VNC service itself, not any macOS user account.
-          # This is the key to bypassing user-level authentication issues.
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -clientopts -setvncpw -vncpw "${{ secrets.RDP_USER_PASSWORD }}" -setvnclegacy -vnclegacy yes
 
-          echo "VNC service is configured and active."
+          # Create the user. This is reliable.
+          echo "Creating user 'rdpuser'..."
+          sudo dscl . -create /Users/rdpuser
+          sudo dscl . -create /Users/rdpuser UserShell /bin/bash
+          sudo dscl . -create /Users/rdpuser RealName "RDP User"
+          sudo dscl . -create /Users/rdpuser UniqueID "1001"
+          sudo dscl . -passwd /Users/rdpuser "${{ secrets.RDP_USER_PASSWORD }}"
+          sudo dscl . -append /Groups/admin GroupMembership rdpuser
+
+          # The Final Command: Grant privileges directly to the user.
+          echo "Granting VNC privileges to 'rdpuser'..."
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -users rdpuser -privs -all -restart -agent -menu
+
+          echo "VNC service is configured for 'rdpuser'."
 
       - name: '2. Create Tunnel and Provide Instructions'
         run: |
@@ -37,11 +41,8 @@ jobs:
           sleep 5
 
           echo "--------------------------------------------------------------------"
-          echo "SESSION IS NOW ACTIVE. READ LOGIN INSTRUCTIONS CAREFULLY."
+          echo "SESSION IS NOW ACTIVE. LOGIN WITH THE NEW USER."
           cat tunnel.log
-          echo "--------------------------------------------------------------------"
-          echo "Connect with RealVNC Viewer. When prompted for authentication,"
-          echo "LEAVE THE USERNAME BLANK and enter your secret password."
           echo "--------------------------------------------------------------------"
           
           sleep 21000
