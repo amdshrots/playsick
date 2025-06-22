@@ -7,14 +7,13 @@ on:
 
 jobs:
   rdp:
-    runs-on: macos-latest # Works on any macOS version
+    runs-on: macos-latest
     timeout-minutes: 350
 
     steps:
-      - name: '1. Create User Account'
+      - name: '1. Create User and Enable VNC'
         run: |
           echo "Setting up user 'rdpuser'..."
-          # The password for this user is your GitHub Secret
           sudo dscl . -create /Users/rdpuser
           sudo dscl . -create /Users/rdpuser UserShell /bin/bash
           sudo dscl . -create /Users/rdpuser RealName "RDP User"
@@ -25,31 +24,32 @@ jobs:
           sudo dscl . -append /Groups/admin GroupMembership rdpuser
           echo "User 'rdpuser' created."
 
-      - name: '2. Enable Apple Remote Desktop (VNC Server)'
-        run: |
           echo "Enabling built-in VNC Server..."
           echo "::add-mask::${{ secrets.RDP_USER_PASSWORD }}"
           
-          # This is the Apple-provided command to configure and start the VNC service
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
             -activate -configure -access -on \
             -users rdpuser -privs -all \
             -restart -agent -menu
           
-          # Configure VNC to allow connections with a password
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
             -configure -clientopts -setvnclegacy -vnclegacy yes -setvncpw "${{ secrets.RDP_USER_PASSWORD }}"
             
           echo "Native VNC Server is active."
 
-      - name: '3. Create Tunnel with bore'
+          echo "Forcing display to wake up by restarting the login window..."
+          # THE CRITICAL COMMAND TO FIX THE BLACK SCREEN:
+          sudo pkill loginwindow
+          echo "Login window restarted."
+
+
+      - name: '2. Create Tunnel and Keep Alive'
         run: |
           echo "Downloading and running bore tunnel..."
           curl -LSs https://github.com/ekzhang/bore/releases/download/v0.5.0/bore-v0.5.0-x86_64-apple-darwin.tar.gz | tar -xz
           chmod +x bore
 
           echo "Starting bore tunnel for VNC (port 5900)..."
-          # The native VNC server runs on port 5900
           nohup ./bore local 5900 --to bore.pub > tunnel.log 2>&1 &
           sleep 5
 
@@ -58,10 +58,6 @@ jobs:
           cat tunnel.log
           echo "--------------------------------------------------------------------"
           echo "Use the 'bore.pub:PORT' address from the log to connect."
-          echo "Username: rdpuser"
-          echo "Password: Your RDP_USER_PASSWORD secret"
-
-      - name: '4. Keep Workflow Alive'
-        run: |
-          echo "Session will remain active for approximately 6 hours."
+          echo "See login instructions in the next step."
+          
           sleep 21000
