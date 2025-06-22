@@ -1,65 +1,56 @@
 # .github/workflows/main.yml
 
-name: macOS Remote Desktop (Definitive)
+name: macOS Remote Desktop (Native VNC)
 
 on:
   workflow_dispatch:
 
 jobs:
   rdp:
-    runs-on: macos-latest
+    runs-on: macos-latest # Works on any macOS version
     timeout-minutes: 350
 
     steps:
-      - name: '1. Install, Find, and Configure TigerVNC'
-        id: setup_vnc # Give this step an ID to reference its outputs
+      - name: '1. Create User Account'
         run: |
-          echo "Installing TigerVNC..."
-          brew install tiger-vnc
+          echo "Setting up user 'rdpuser'..."
+          # The password for this user is your GitHub Secret
+          sudo dscl . -create /Users/rdpuser
+          sudo dscl . -create /Users/rdpuser UserShell /bin/bash
+          sudo dscl . -create /Users/rdpuser RealName "RDP User"
+          sudo dscl . -create /Users/rdpuser UniqueID "1001"
+          sudo dscl . -create /Users/rdpuser PrimaryGroupID 80
+          sudo dscl . -create /Users/rdpuser NFSHomeDirectory /Users/rdpuser
+          sudo dscl . -passwd /Users/rdpuser "${{ secrets.RDP_USER_PASSWORD }}"
+          sudo dscl . -append /Groups/admin GroupMembership rdpuser
+          echo "User 'rdpuser' created."
 
-          echo "Querying Homebrew for executable paths..."
-          PASSWD_CMD=$(brew list tiger-vnc | grep '/bin/tigervncpasswd$' | head -n 1)
-          SERVER_CMD=$(brew list tiger-vnc | grep '/bin/tigervncserver$' | head -n 1)
-          
-          if [ -z "$PASSWD_CMD" ] || [ -z "$SERVER_CMD" ]; then
-            echo "FATAL: Could not find required executables via 'brew list'."
-            echo "--- DUMPING ALL INSTALLED FILES FOR tiger-vnc ---"
-            brew list tiger-vnc
-            echo "-------------------------------------------------"
-            exit 1
-          fi
-          
-          echo "Found tigervncpasswd at: $PASSWD_CMD"
-          echo "Found tigervncserver at: $SERVER_CMD"
-
-          # Export the discovered paths for the next step to use.
-          echo "passwd_cmd=$PASSWD_CMD" >> $GITHUB_OUTPUT
-          echo "server_cmd=$SERVER_CMD" >> $GITHUB_OUTPUT
-
-          echo "Configuring VNC password..."
-          if [ -z "${{ secrets.VNC_PASSWORD }}" ]; then
-            echo "Error: VNC_PASSWORD secret is not set."
-            exit 1
-          fi
-          echo "::add-mask::${{ secrets.VNC_PASSWORD }}"
-          
-          mkdir -p ~/.vnc
-          echo "${{ secrets.VNC_PASSWORD }}" | "$PASSWD_CMD" -f > ~/.vnc/passwd
-          chmod 600 ~/.vnc/passwd
-          echo "TigerVNC password configured successfully."
-
-      - name: '2. Start VNC Server and Tunnel'
+      - name: '2. Enable Apple Remote Desktop (VNC Server)'
         run: |
-          echo "Starting TigerVNC server using discovered path..."
-          # Use the output from the previous step. Steps run sequentially so this is guaranteed to be available.
-          "${{ steps.setup_vnc.outputs.server_cmd }}" :1 -localhost no -SecurityTypes VncAuth -PasswordFile ~/.vnc/passwd &
-          sleep 5
+          echo "Enabling built-in VNC Server..."
+          echo "::add-mask::${{ secrets.RDP_USER_PASSWORD }}"
+          
+          # This is the Apple-provided command to configure and start the VNC service
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+            -activate -configure -access -on \
+            -users rdpuser -privs -all \
+            -restart -agent -menu
+          
+          # Configure VNC to allow connections with a password
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+            -configure -clientopts -setvnclegacy -vnclegacy yes -setvncpw "${{ secrets.RDP_USER_PASSWORD }}"
+            
+          echo "Native VNC Server is active."
 
+      - name: '3. Create Tunnel with bore'
+        run: |
           echo "Downloading and running bore tunnel..."
           curl -LSs https://github.com/ekzhang/bore/releases/download/v0.5.0/bore-v0.5.0-x86_64-apple-darwin.tar.gz | tar -xz
           chmod +x bore
-          
-          nohup ./bore local 5901 --to bore.pub > tunnel.log 2>&1 &
+
+          echo "Starting bore tunnel for VNC (port 5900)..."
+          # The native VNC server runs on port 5900
+          nohup ./bore local 5900 --to bore.pub > tunnel.log 2>&1 &
           sleep 5
 
           echo "--------------------------------------------------------------------"
@@ -67,6 +58,10 @@ jobs:
           cat tunnel.log
           echo "--------------------------------------------------------------------"
           echo "Use the 'bore.pub:PORT' address from the log to connect."
-          echo "Password is your VNC_PASSWORD secret. Username is not required."
-          
+          echo "Username: rdpuser"
+          echo "Password: Your RDP_USER_PASSWORD secret"
+
+      - name: '4. Keep Workflow Alive'
+        run: |
+          echo "Session will remain active for approximately 6 hours."
           sleep 21000
