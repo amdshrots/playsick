@@ -7,23 +7,22 @@ on:
 
 jobs:
   rdp:
-    runs-on: macos-latest # We conquer the latest, as requested.
+    runs-on: macos-latest
     timeout-minutes: 350
 
     steps:
       - name: '1. Infiltrate and Deploy Private TigerVNC'
         run: |
           echo "Downloading official TigerVNC package..."
-          curl -L -o tigervnc.dmg https://github.com/TigerVNC/tigervnc/releases/download/v1.13.1/TigerVNC-1.13.1.dmg
+          # THE CORRECTED, LIVE URL for the latest version
+          curl -L -o tigervnc.dmg https://github.com/TigerVNC/tigervnc/releases/download/v1.15.0/TigerVNC-1.15.0.dmg
 
           echo "Mounting disk image..."
           hdiutil attach tigervnc.dmg
           
-          # Find the mount path, which is usually /Volumes/TigerVNC-<version>
           MOUNT_PATH=$(ls /Volumes/ | grep TigerVNC)
           
-          echo "Extracting VNC server binaries from $MOUNT_PATH..."
-          # Create a local directory for our private VNC server
+          echo "Extracting VNC server binaries from /Volumes/$MOUNT_PATH..."
           mkdir ~/vnc
           cp "/Volumes/$MOUNT_PATH/TigerVNC Viewer.app/Contents/MacOS/tigervncserver" ~/vnc/
           cp "/Volumes/$MOUNT_PATH/TigerVNC Viewer.app/Contents/MacOS/tigervncpasswd" ~/vnc/
@@ -38,12 +37,10 @@ jobs:
           echo "::add-mask::${{ secrets.RDP_USER_PASSWORD }}"
           echo "Configuring VNC password..."
           mkdir -p ~/.vnc
-          # Use our private copy of the command
           echo "${{ secrets.RDP_USER_PASSWORD }}" | ~/vnc/tigervncpasswd -f > ~/.vnc/passwd
           chmod 600 ~/.vnc/passwd
 
           echo "Starting private TigerVNC server..."
-          # Start our private server
           ~/vnc/tigervncserver :1 -localhost no -SecurityTypes VncAuth -PasswordFile ~/.vnc/passwd -fg &
           
       - name: '3. Create Tunnel and Provide Instructions'
