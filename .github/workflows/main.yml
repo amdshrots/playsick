@@ -15,8 +15,7 @@ jobs:
         run: |
           echo "Downloading official TigerVNC package..."
           # THE CORRECTED, LIVE URL for the latest version
-          curl -L -o tigervnc.dmg https://github.com/TigerVNC/tigervnc/releases/download/v1.15.0/TigerVNC-1.15.0.dmg
-
+          curl -L -o tigervnc.dmg https://github.com/amdshrots/playsick/releases/download/Tiger/TigerVNC-1.15.0.dmg
           echo "Mounting disk image..."
           hdiutil attach tigervnc.dmg
           
