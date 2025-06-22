@@ -11,7 +11,7 @@ jobs:
     timeout-minutes: 350
 
     steps:
-      - name: '1. Create User and Install NoMachine'
+      - name: '1. Create User and Install NoMachine from DMG'
         run: |
           echo "::add-mask::${{ secrets.RDP_USER_PASSWORD }}"
 
@@ -24,13 +24,27 @@ jobs:
           sudo dscl . -passwd /Users/nxuser "${{ secrets.RDP_USER_PASSWORD }}"
           sudo dscl . -append /Groups/admin GroupMembership nxuser
 
-          echo "Downloading the NoMachine package..."
-          # Download the official PKG installer for macOS
-          curl -L -o nomachine.pkg https://download.nomachine.com/download/8.11/MacOSX/nomachine_8.11.3_1.pkg
+          echo "Downloading the NoMachine DMG..."
+          # Use the new DMG link you provided
+          curl -L -o nomachine.dmg https://download.nomachine.com/download/9.0/MacOSX/nomachine_9.0.188_11.dmg
 
-          echo "Installing NoMachine..."
-          # Use the native macOS installer. This is a robust method.
-          sudo installer -pkg nomachine.pkg -target /
+          echo "Mounting disk image..."
+          # Mount the DMG; the OS will find a free mount point
+          hdiutil attach nomachine.dmg
+          
+          # Find the path to the mounted volume
+          MOUNT_PATH=$(ls /Volumes/ | grep NoMachine)
+          echo "DMG mounted at /Volumes/$MOUNT_PATH"
+          
+          # Find the installer package inside the mounted volume
+          PKG_PATH=$(find "/Volumes/$MOUNT_PATH" -name "*.pkg" | head -n 1)
+          echo "Found installer at $PKG_PATH"
+
+          echo "Installing NoMachine from package..."
+          sudo installer -pkg "$PKG_PATH" -target /
+          
+          echo "Unmounting disk image..."
+          hdiutil detach "/Volumes/$MOUNT_PATH"
           
           echo "System is configured for NoMachine."
 
@@ -41,7 +55,6 @@ jobs:
           chmod +x bore
 
           echo "Starting bore tunnel for NoMachine (port 4000)..."
-          # NoMachine uses port 4000 by default
           nohup ./bore local 4000 --to bore.pub > tunnel.log 2>&1 &
           sleep 5
 
