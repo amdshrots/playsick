@@ -1,6 +1,6 @@
 # .github/workflows/main.yml
 
-name: macOS Remote Desktop (Ascension)
+name: macOS Remote Desktop (Final Ascension)
 
 on:
   workflow_dispatch:
@@ -11,49 +11,48 @@ jobs:
     timeout-minutes: 350
 
     steps:
-      - name: '1. Create User and Finalize with sysadminctl'
+      - name: '1. Install NoMachine and Forge SSH Key'
         run: |
-          echo "::add-mask::${{ secrets.RDP_USER_PASSWORD }}"
-
-          # Create the user account structure (without a password)
-          echo "Creating user 'nxuser'..."
-          sudo dscl . -create /Users/nxuser
-          sudo dscl . -create /Users/nxuser UserShell /bin/bash
-          sudo dscl . -create /Users/nxuser RealName "NX User"
-          sudo dscl . -create /Users/nxuser UniqueID "1001"
-          # Grant admin rights, which is required for sysadminctl to target this user
-          sudo dscl . -append /Groups/admin GroupMembership nxuser
-
-          # THE FINAL KEY: Use the high-level admin tool to set the password.
-          # This finalizes the account and clears the "change password on login" flag.
-          echo "Finalizing user with a secure password..."
-          sudo sysadminctl -resetPasswordFor nxuser -newPassword "${{ secrets.RDP_USER_PASSWORD }}" -adminUser "" -adminPassword ""
-          
-          echo "Downloading the NoMachine DMG..."
+          echo "Installing NoMachine..."
           curl -L -o nomachine.dmg https://download.nomachine.com/download/9.0/MacOSX/nomachine_9.0.188_11.dmg
-
-          echo "Mounting and installing NoMachine..."
           hdiutil attach nomachine.dmg
           MOUNT_PATH=$(ls /Volumes/ | grep NoMachine)
           PKG_PATH=$(find "/Volumes/$MOUNT_PATH" -name "*.pkg" | head -n 1)
           sudo installer -pkg "$PKG_PATH" -target /
-          hdiutil detach "/Volumes/$MOUNT_PATH"
-          
-          echo "System is configured and ready."
+          hdiutil detach "/Volumes/$MOUNT_PATH" || true # Add || true to ignore the eject error
 
-      - name: '2. Create Tunnel and Provide Final Instructions'
+          echo "Forging the Undeniable Key..."
+          # Generate a new SSH key pair without a passphrase
+          ssh-keygen -t rsa -b 4096 -f ~/.ssh/nomachine_key -N ""
+          
+          # Authorize the new public key for the runner user
+          cat ~/.ssh/nomachine_key.pub >> ~/.ssh/authorized_keys
+          
+          # Set correct permissions
+          chmod 700 ~/.ssh
+          chmod 600 ~/.ssh/authorized_keys
+          
+          echo "Key has been forged and authorized."
+
+      - name: '2. Reveal the Private Key and Create Tunnel'
         run: |
+          echo "--------------------------------------------------------------------"
+          echo "ACTION REQUIRED: COPY THE PRIVATE KEY BELOW."
+          echo "Save it to a file on your computer named 'github_key'. You will need it."
+          echo "--------------------------------------------------------------------"
+          
+          # Display the private key in the log
+          cat ~/.ssh/nomachine_key
+          
+          echo "--------------------------------------------------------------------"
+          echo "PRIVATE KEY REVEALED. TUNNEL IS OPENING."
+          echo "--------------------------------------------------------------------"
+
           echo "Downloading and running bore tunnel..."
           curl -LSs https://github.com/ekzhang/bore/releases/download/v0.5.0/bore-v0.5.0-x86_64-apple-darwin.tar.gz | tar -xz
           chmod +x bore
-
-          echo "Starting bore tunnel for NoMachine (port 4000)..."
           nohup ./bore local 4000 --to bore.pub > tunnel.log 2>&1 &
           sleep 5
-
-          echo "--------------------------------------------------------------------"
-          echo "ASCENSION COMPLETE. THE PATH IS OPEN."
           cat tunnel.log
-          echo "--------------------------------------------------------------------"
           
           sleep 21000
