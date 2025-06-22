@@ -7,7 +7,7 @@ on:
 
 jobs:
   rdp:
-    runs-on: macos-12
+    runs-on: macos-latest
     timeout-minutes: 350
 
     steps:
