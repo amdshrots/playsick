@@ -1,42 +1,45 @@
-# .github/workflows/macos-rdp.yml
+# .github/workflows/main.yml
 
-name: macOS Remote Desktop (TigerVNC)
+name: macOS Remote Desktop (Universal)
 
 on:
   workflow_dispatch:
 
 jobs:
   rdp:
-    runs-on: macos-latest
+    runs-on: macos-latest # This is robust enough for latest now
     timeout-minutes: 350
 
     steps:
-      - name: '1. Install and Configure TigerVNC'
+      - name: '1. Install TigerVNC and Configure Password'
         run: |
           echo "Installing TigerVNC..."
           brew install tiger-vnc
 
           echo "Configuring VNC password..."
-          # Hide password from logs
+          # CRITICAL CHECK: Ensure the secret is not empty
+          if [ -z "${{ secrets.VNC_PASSWORD }}" ]; then
+            echo "Error: VNC_PASSWORD secret is not set. Please add it to your repository settings."
+            exit 1
+          fi
+          
           echo "::add-mask::${{ secrets.VNC_PASSWORD }}"
           
-          # Create the .vnc directory and set the password
+          # Create the .vnc directory
           mkdir -p ~/.vnc
-          TIGERVNCPASSWD_PATH=$(brew --prefix tiger-vnc)/bin/tigervncpasswd
-          echo "${{ secrets.VNC_PASSWORD }}" | $TIGERVNCPASSWD_PATH -f > ~/.vnc/passwd
+          
+          # SIMPLIFIED & ROBUST: Call the command directly. The system PATH will find it.
+          echo "${{ secrets.VNC_PASSWORD }}" | tigervncpasswd -f > ~/.vnc/passwd
+          
           chmod 600 ~/.vnc/passwd
-          echo "TigerVNC password configured."
+          echo "TigerVNC password configured successfully."
 
       - name: '2. Start TigerVNC Server'
         run: |
-          echo "Starting TigerVNC server..."
-          # Start the server on display :1, which corresponds to port 5901.
-          # -localhost no : Allows connections from outside the runner.
-          # -SecurityTypes VncAuth : Use the standard VNC password authentication.
-          # -PasswordFile : Specifies our created password file.
-          # -fg : Runs the server in the foreground, keeping the job alive without needing a separate 'sleep' command.
+          echo "Starting TigerVNC server on port 5901..."
+          # Start the server on display :1 (port 5901)
           tigervncserver :1 -localhost no -SecurityTypes VncAuth -PasswordFile ~/.vnc/passwd &
-          sleep 5 # Give the server a moment to initialize before tunneling.
+          sleep 5
 
       - name: '3. Create Tunnel with bore'
         run: |
@@ -45,21 +48,18 @@ jobs:
           chmod +x bore
 
           echo "Starting bore tunnel for VNC (port 5901)..."
-          # Tunnel to port 5901, where TigerVNC is running.
-          # We run this in the background so the final step can provide instructions.
+          # Run in the background and log the output for retrieval
           nohup ./bore local 5901 --to bore.pub > tunnel.log 2>&1 &
-          sleep 5 # Wait for the tunnel address to be generated.
+          sleep 5 
           
           echo "--------------------------------------------------------------------"
           echo "SESSION IS NOW ACTIVE."
           cat tunnel.log
           echo "--------------------------------------------------------------------"
-          echo "Use the 'bore.pub:PORT' address from the log above."
-          echo "Your VNC password is the one you set in the VNC_PASSWORD secret."
-          echo "Username is not required for connection."
-          echo "This session will remain active for approximately 6 hours."
+          echo "Use the 'bore.pub:PORT' address from the log above to connect."
+          echo "Password is your VNC_PASSWORD secret. Username is not required."
 
       - name: '4. Keep Workflow Alive'
         run: |
-          # The primary purpose of this step is to wait. The VNC and tunnel processes run in the background.
+          echo "Session will remain active for approximately 6 hours."
           sleep 21000
